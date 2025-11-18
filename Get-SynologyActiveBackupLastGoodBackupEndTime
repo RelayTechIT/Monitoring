@@ -1,0 +1,55 @@
+param (
+    $Verbose = $false
+)
+
+# Get-SynologyActiveBackupLastGoodBackupEndTime
+
+if ($verbose) {
+    $VerbosePreference = 'Continue'
+} else {
+    $VerbosePreference = 'SilentlyContinue'
+}
+
+$log    =   "C:\RTSupport\Logs\ActiveBackupLog.csv"
+$reg    =   "HKLM:\SOFTWARE\Synology\ActiveBackupforBusinessCustom\LastBackupStatus"
+$svc    =   Get-Service "*Synology Active Backup for Business*" -ea SilentlyContinue
+$tst    =   get-item $reg -ea SilentlyContinue
+if ($tst) {$tst.property | foreach {Set-Variable -Name $_ -Value $(get-itempropertyvalue -path $reg -name $_)}}
+
+Write-Verbose $log
+Write-Verbose $reg
+
+if (($svc) -and ($tst)) {
+    Write-Verbose "svc and tst exist"
+    Write-Verbose "     $($svc)"
+    Write-Verbose "     $($tst)"
+
+    $CurrentBackupInfo = @(
+                    [pscustomobject]@{
+                        Service             =  $svc.Status;
+                        Hostname            =   $Env:COMPUTERNAME;
+                        Server              =  (Get-NetTCPConnection -RemotePort 5510 | select -first 1).RemoteAddress;
+                        LastBackupStatus    =   $LastBackupStatus;
+                        LastBackupStartTime =   $LastBackupStartTime;
+                        LastBackupEndTime   =   $LastBackupEndTime;
+                        LastBackupDuration  =   $LastBackupDuration;
+                    }
+    )
+    $CurrentBackupInfo | foreach {Write-Verbose $_}
+    if (!(test-path $log)) {
+        new-item $log -ItemType File -Force > $null
+        $CurrentBackupInfo | Export-Csv $log -NoTypeInformation -Append
+        Write-Verbose "Logfile does not exist. Created logfile and wrote entry."
+    } else {
+        if ((Import-Csv $log | Select -last 1).LastBackupEndTime -ne $CurrentBackupInfo.LastBackupEndTime) {
+            Write-Verbose "Log file exists. import-csv log last entry does not match current backup info data. Writing entry to log."
+            $CurrentBackupInfo | Export-Csv $log -NoTypeInformation -Append
+        } else {
+            Write-Verbose "Log file exists. import-csv log last entry matches current backup info data. Nothing written to log."
+        }
+    }
+    Write-Verbose "Displaying lastbackupsEndTime value from most recent log entry"
+    (Import-Csv $log | where {$_.LastBackupStatus -eq 0} | Select -last 1).LastBackupEndTime
+} else {
+    Write-Verbose "svc or tst did not exist. Not displaying LastBackupEndTime"
+}
