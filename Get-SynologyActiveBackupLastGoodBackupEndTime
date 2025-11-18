@@ -1,7 +1,3 @@
-param (
-    $Verbose = $false
-)
-
 # Get-SynologyActiveBackupLastGoodBackupEndTime
 
 if ($verbose) {
